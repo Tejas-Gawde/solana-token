@@ -83,6 +83,48 @@ function initializeTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_tokens_mint_address ON tokens(mint_address);
     CREATE INDEX IF NOT EXISTS idx_tokens_creator_wallet ON tokens(creator_wallet);
     CREATE INDEX IF NOT EXISTS idx_tokens_group_tag ON tokens(group_tag);
+
+    CREATE TABLE IF NOT EXISTS pump_launches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mint_address TEXT NOT NULL UNIQUE,
+      creator_wallet TEXT NOT NULL,
+      name TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      description TEXT,
+      image_url TEXT,
+      metadata_uri TEXT,
+      twitter TEXT,
+      telegram TEXT,
+      website TEXT,
+      initial_buy_sol REAL,
+      group_tag TEXT,
+      create_tx_signature TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (creator_wallet) REFERENCES wallets(public_key)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_pump_launches_mint ON pump_launches(mint_address);
+    CREATE INDEX IF NOT EXISTS idx_pump_launches_creator ON pump_launches(creator_wallet);
+    CREATE INDEX IF NOT EXISTS idx_pump_launches_group ON pump_launches(group_tag);
+    CREATE INDEX IF NOT EXISTS idx_pump_launches_status ON pump_launches(status);
+
+    CREATE TABLE IF NOT EXISTS pump_buys (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      launch_id INTEGER NOT NULL,
+      mint_address TEXT NOT NULL,
+      buyer_wallet TEXT NOT NULL,
+      amount_sol REAL NOT NULL,
+      tx_signature TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (launch_id) REFERENCES pump_launches(id) ON DELETE CASCADE,
+      FOREIGN KEY (buyer_wallet) REFERENCES wallets(public_key)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_pump_buys_launch ON pump_buys(launch_id);
+    CREATE INDEX IF NOT EXISTS idx_pump_buys_mint ON pump_buys(mint_address);
+    CREATE INDEX IF NOT EXISTS idx_pump_buys_buyer ON pump_buys(buyer_wallet);
   `);
 
   logger.info("Database tables initialized");

@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import walletRoutes from "./modules/wallet/wallet.routes.ts";
 import tokenRoutes from "./modules/token/token.routes.ts";
+import pumpLaunchRoutes from "./modules/pump-launch/pump-launch.routes.ts";
 import { errorHandler } from "./middleware/errorHandler.ts";
 import { ApiResponse } from "./utils/ApiResponse.ts";
 import { logger } from "./utils/logger.ts";
@@ -28,7 +29,6 @@ app.use((req, _res, next) => {
 
 // ==================== ROUTES ====================
 
-// Health check
 app.get("/api/health", (_req, res) => {
   res.json(
     ApiResponse.ok("Memecoin Launcher API is running", {
@@ -39,16 +39,14 @@ app.get("/api/health", (_req, res) => {
   );
 });
 
-// Modules
 app.use("/api/wallets", walletRoutes);
 app.use("/api/tokens", tokenRoutes);
+app.use("/api/pump-launches", pumpLaunchRoutes);
 
-// 404 handler
 app.use((_req, res) => {
   res.status(404).json(ApiResponse.error("Route not found"));
 });
 
-// Global error handler
 app.use(errorHandler);
 
 export default app;
