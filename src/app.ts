@@ -4,14 +4,20 @@ import helmet from "helmet";
 import walletRoutes from "./modules/wallet/wallet.routes.ts";
 import tokenRoutes from "./modules/token/token.routes.ts";
 import pumpLaunchRoutes from "./modules/pump-launch/pump-launch.routes.ts";
+import metadataRoutes from "./modules/metadata/metadata.routes.ts";
 import { errorHandler } from "./middleware/errorHandler.ts";
 import { ApiResponse } from "./utils/ApiResponse.ts";
 import { logger } from "./utils/logger.ts";
+import { config } from "./config/index.ts";
 
 const app = express();
 
 // ==================== GLOBAL MIDDLEWARE ====================
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN || "*",
@@ -22,6 +28,34 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
+// ==================== STATIC FILE SERVING ====================
+// Serve images at /images/:filename
+app.use(
+  "/images",
+  express.static(config.paths.images, {
+    maxAge: "7d",
+    immutable: true,
+    setHeaders: (res) => {
+      res.setHeader("Content-Type", "image/webp");
+      res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    },
+  }),
+);
+
+// Serve metadata JSON at /metadata-json/:filename
+app.use(
+  "/metadata-json",
+  express.static(config.paths.metadataJson, {
+    maxAge: "7d",
+    immutable: true,
+    setHeaders: (res) => {
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    },
+  }),
+);
+
+// Request logging
 app.use((req, _res, next) => {
   logger.info(`${req.method} ${req.path}`);
   next();
@@ -41,12 +75,15 @@ app.get("/api/health", (_req, res) => {
 
 app.use("/api/wallets", walletRoutes);
 app.use("/api/tokens", tokenRoutes);
-app.use("/api/pump-launches", pumpLaunchRoutes);
+app.use("/api/pump", pumpLaunchRoutes);
+app.use("/api/metadata", metadataRoutes);
 
+// 404 handler
 app.use((_req, res) => {
   res.status(404).json(ApiResponse.error("Route not found"));
 });
 
+// Global error handler
 app.use(errorHandler);
 
 export default app;

@@ -8,6 +8,8 @@ export const config = {
     port: parseInt(process.env.PORT || "3000", 10),
     nodeEnv: process.env.NODE_ENV || "development",
     isDev: process.env.NODE_ENV === "development",
+    baseUrl:
+      process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`,
   },
   solana: {
     rpcUrl: process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
@@ -21,5 +23,10 @@ export const config = {
     path:
       process.env.DB_PATH ||
       path.join(process.cwd(), "data", "memecoin_launcher.db"),
+  },
+  paths: {
+    public: path.join(process.cwd(), "public"),
+    images: path.join(process.cwd(), "public", "images"),
+    metadataJson: path.join(process.cwd(), "public", "metadata-json"),
   },
 } as const;

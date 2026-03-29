@@ -12,6 +12,7 @@
     "@types/cors": "^2.8.19",
     "@types/crypto-js": "^4.2.2",
     "@types/express": "^5.0.6",
+    "@types/multer": "^2.1.0",
     "@types/node": "^25.5.0"
   },
   "dependencies": {
@@ -31,8 +32,10 @@
     "express": "^5.2.1",
     "form-data": "^4.0.5",
     "helmet": "^8.1.0",
+    "multer": "^2.1.1",
     "node-fetch": "^3.3.2",
     "nodemon": "^3.1.14",
+    "sharp": "^0.34.5",
     "ts-node": "^10.9.2",
     "winston": "^3.19.0",
     "zod": "^4.3.6"

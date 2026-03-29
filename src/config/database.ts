@@ -125,6 +125,27 @@ function initializeTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_pump_buys_launch ON pump_buys(launch_id);
     CREATE INDEX IF NOT EXISTS idx_pump_buys_mint ON pump_buys(mint_address);
     CREATE INDEX IF NOT EXISTS idx_pump_buys_buyer ON pump_buys(buyer_wallet);
+
+    CREATE TABLE IF NOT EXISTS token_metadata (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      metadata_id TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      image_filename TEXT NOT NULL,
+      image_url TEXT NOT NULL,
+      metadata_url TEXT NOT NULL,
+      show_name INTEGER NOT NULL DEFAULT 1,
+      created_on TEXT NOT NULL DEFAULT 'https://pump.fun',
+      twitter TEXT,
+      telegram TEXT,
+      website TEXT,
+      group_tag TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_token_metadata_id ON token_metadata(metadata_id);
+    CREATE INDEX IF NOT EXISTS idx_token_metadata_group ON token_metadata(group_tag);
   `);
 
   logger.info("Database tables initialized");
