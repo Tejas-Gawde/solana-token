@@ -3,61 +3,63 @@ import { PumpLaunchController } from "./pump-launch.controller.ts";
 import { asyncHandler } from "../../middleware/asyncHandler.ts";
 import {
   validate,
-  createPumpLaunchSchema,
-  listPumpLaunchesSchema,
-  getPumpLaunchSchema,
-  updatePumpLaunchSchema,
-  executePumpLaunchSchema,
+  launchPumpSchema,
+  launchPumpWithBuySchema,
+  buyPumpSchema,
+  migratePumpSchema,
+  getBondingCurveSchema,
 } from "./pump-launch.validation.ts";
 
 const router = Router();
 
-// ==================== PUMP LAUNCH ROUTES ====================
-
 /**
- * POST /api/pump-launches
+ * POST /api/pump-launch/launch
+ * Launch a new pump without initial buy.
  */
 router.post(
-  "/",
-  validate(createPumpLaunchSchema),
-  asyncHandler(PumpLaunchController.createLaunch),
+  "/launch",
+  validate(launchPumpSchema),
+  asyncHandler(PumpLaunchController.launch),
 );
 
 /**
- * GET /api/pump-launches
+ * POST /api/pump-launch/launch-with-buy
+ * Launch a new pump and perform an initial buy in the same request.
  */
-router.get(
-  "/",
-  validate(listPumpLaunchesSchema),
-  asyncHandler(PumpLaunchController.listLaunches),
-);
-
-/**
- * GET /api/pump-launches/:mintAddress
- */
-router.get(
-  "/:mintAddress",
-  validate(getPumpLaunchSchema),
-  asyncHandler(PumpLaunchController.getLaunch),
-);
-
-/**
- * PATCH /api/pump-launches/:mintAddress
- */
-router.patch(
-  "/:mintAddress",
-  validate(updatePumpLaunchSchema),
-  asyncHandler(PumpLaunchController.updateLaunch),
-);
-
-/**
- * POST /api/pump-launches/:mintAddress/execute
- */
-// Deprecated: No need to use this endpoint anymore since pump launch is executed immediately after creation
 router.post(
-  "/:mintAddress/execute",
-  validate(executePumpLaunchSchema),
-  asyncHandler(PumpLaunchController.executeLaunch),
+  "/launch-with-buy",
+  validate(launchPumpWithBuySchema),
+  asyncHandler(PumpLaunchController.launchWithBuy),
+);
+
+/**
+ * POST /api/pump-launch/buy
+ * Execute a buy order against an existing pump.
+ */
+router.post(
+  "/buy",
+  validate(buyPumpSchema),
+  asyncHandler(PumpLaunchController.buy),
+);
+
+/**
+ * POST /api/pump-launch/migrate
+ * Migrate a pump instance to a new configuration or market.
+ */
+router.post(
+  "/migrate",
+  validate(migratePumpSchema),
+  asyncHandler(PumpLaunchController.migrate),
+);
+
+/**
+ * GET /api/pump-launch/bonding-curve/:mintAddress
+ * Retrieve bonding curve data for a pump by mint address.
+ */
+router.get(
+  "/bonding-curve/:mintAddress",
+  validate(getBondingCurveSchema),
+  asyncHandler(PumpLaunchController.getBondingCurve),
 );
 
 export default router;

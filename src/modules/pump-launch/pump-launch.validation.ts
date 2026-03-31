@@ -2,95 +2,88 @@ import { z } from "zod";
 
 const base58Regex = /^[1-9A-HJ-NP-Za-km-z]+$/;
 
-export const createPumpLaunchSchema = z.object({
+const publicKeySchema = z
+  .string()
+  .min(32, "Invalid public key")
+  .max(44, "Invalid public key")
+  .regex(base58Regex, "Public key must be valid base58");
+
+export const launchPumpSchema = z.object({
   body: z.object({
-    creatorWallet: z
-      .string()
-      .min(32, "Invalid creator wallet public key")
-      .max(44, "Invalid creator wallet public key")
-      .regex(base58Regex, "Creator wallet must be valid base58"),
-    name: z.string().min(1, "Name is required").max(32, "Name max 32 chars"),
-    symbol: z
-      .string()
-      .min(1, "Symbol is required")
-      .max(10, "Symbol max 10 chars"),
-    description: z.string().max(512, "Description max 512 chars").optional(),
-    imageUrl: z.string().url("Image URL must be a valid URL"),
-    metadataUri: z.string().url("Metadata URI must be a valid URL").optional(),
-    twitter: z.string().max(100, "Twitter link max 100 chars").optional(),
-    telegram: z.string().max(100, "Telegram link max 100 chars").optional(),
-    website: z.string().url("Website must be a valid URL").optional(),
-    initialBuySol: z.number().gt(0, "Initial buy amount must be >0").optional(),
-    groupTag: z.string().max(50, "Group tag max 50 chars").optional(),
+    creatorPublicKey: publicKeySchema,
+    userPublicKey: publicKeySchema,
+    name: z.string().min(3, "Name must be at least 3 characters").max(32),
+    symbol: z.string().min(2, "Symbol must be at least 2 characters").max(10),
+    uri: z.string().min(1, "URI is required").max(512),
     mayhemMode: z.boolean().optional().default(false),
     cashback: z.boolean().optional().default(false),
   }),
 });
 
-export const getPumpLaunchSchema = z.object({
-  params: z.object({
-    mintAddress: z
-      .string()
-      .min(32, "Invalid mint address")
-      .max(44, "Invalid mint address")
-      .regex(base58Regex, "Mint address must be valid base58"),
-  }),
-});
-
-export const listPumpLaunchesSchema = z.object({
-  query: z.object({
-    creatorWallet: z
-      .string()
-      .max(44, "Invalid creator wallet public key")
-      .regex(base58Regex, "Creator wallet must be valid base58")
-      .optional(),
-    status: z.string().optional(),
-    groupTag: z.string().max(50, "Group tag max 50 chars").optional(),
-    page: z
-      .string()
-      .transform((val) => parseInt(val, 10))
-      .pipe(z.number().int().min(1))
+export const launchPumpWithBuySchema = z.object({
+  body: z.object({
+    creatorPublicKey: publicKeySchema,
+    userPublicKey: publicKeySchema,
+    name: z.string().min(3, "Name must be at least 3 characters").max(32),
+    symbol: z.string().min(2, "Symbol must be at least 2 characters").max(10),
+    uri: z.string().min(1, "URI is required").max(512),
+    mayhemMode: z.boolean().optional().default(false),
+    cashback: z.boolean().optional().default(false),
+    initialBuySol: z
+      .number("initialBuySol must be a number")
+      .positive("initialBuySol must be greater than 0"),
+    slippage: z
+      .number()
+      .min(0, "Slippage must be 0 or greater")
+      .max(10, "Slippage cannot exceed 10")
       .optional()
       .default(1),
-    limit: z
-      .string()
-      .transform((val) => parseInt(val, 10))
-      .pipe(z.number().int().min(1).max(100))
-      .optional()
-      .default(20),
   }),
 });
 
-export const updatePumpLaunchSchema = z.object({
-  params: z.object({
-    mintAddress: z
-      .string()
-      .min(32, "Invalid mint address")
-      .max(44, "Invalid mint address")
-      .regex(base58Regex, "Mint address must be valid base58"),
-  }),
+export const buyPumpSchema = z.object({
+  body: z
+    .object({
+      mintAddress: publicKeySchema,
+      userPublicKey: publicKeySchema,
+      buySolAmount: z
+        .number("buySolAmount must be a number")
+        .positive("buySolAmount must be greater than 0")
+        .optional(),
+      buyTokenAmountRaw: z
+        .string()
+        .regex(
+          /^[0-9]+$/,
+          "buyTokenAmountRaw must be a raw token amount string",
+        )
+        .optional(),
+      slippage: z
+        .number()
+        .min(0, "Slippage must be 0 or greater")
+        .max(10, "Slippage cannot exceed 10")
+        .optional()
+        .default(1),
+    })
+    .superRefine((data, ctx) => {
+      if (!data.buySolAmount && !data.buyTokenAmountRaw) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Either buySolAmount or buyTokenAmountRaw is required",
+        });
+      }
+    }),
+});
+
+export const migratePumpSchema = z.object({
   body: z.object({
-    status: z
-      .enum(["pending", "created", "failed", "active", "cancelled"])
-      .optional(),
-    description: z.string().max(512).optional(),
-    imageUrl: z.string().url().optional(),
-    metadataUri: z.string().url().optional(),
-    twitter: z.string().max(100).optional(),
-    telegram: z.string().max(100).optional(),
-    website: z.string().url().optional(),
-    initialBuySol: z.number().gt(0).optional(),
-    groupTag: z.string().max(50).optional(),
+    mintAddress: publicKeySchema,
+    userPublicKey: publicKeySchema,
   }),
 });
 
-export const executePumpLaunchSchema = z.object({
+export const getBondingCurveSchema = z.object({
   params: z.object({
-    mintAddress: z
-      .string()
-      .min(32, "Invalid mint address")
-      .max(44, "Invalid mint address")
-      .regex(base58Regex, "Mint address must be valid base58"),
+    mintAddress: publicKeySchema,
   }),
 });
 

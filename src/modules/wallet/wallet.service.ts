@@ -3,6 +3,7 @@ import type { KeyPairSigner } from "@solana/signers";
 import { createSolanaRpc } from "@solana/rpc";
 import { address, lamports } from "@solana/kit";
 import type { Signature } from "@solana/kit";
+import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
 import crypto from "node:crypto";
 import { config } from "../../config/index.ts";
@@ -477,5 +478,24 @@ export class WalletService {
     }
 
     return await createKeyPairSignerFromBytes(secretKeyBytes, false);
+  }
+
+  /**
+   * Get a KeyPair from a stored wallet (for other modules) using web3.js directly
+   */
+  static async getKeypairForWallet(publicKey: string): Promise<Keypair> {
+    const record = WalletModel.findByPublicKey(publicKey);
+    if (!record) {
+      throw new AppError(`Wallet not found: ${publicKey}`, 404);
+    }
+
+    const privateKeyBase58 = decryptPrivateKey(record.encrypted_private_key);
+    const secretKeyBytes = bs58.decode(privateKeyBase58);
+
+    if (secretKeyBytes.length !== 64) {
+      throw new AppError("Stored key is corrupted", 500);
+    }
+
+    return Keypair.fromSecretKey(secretKeyBytes);
   }
 }

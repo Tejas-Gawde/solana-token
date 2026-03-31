@@ -3,56 +3,102 @@ import { PumpLaunchService } from "./pump-launch.service.ts";
 import { ApiResponse } from "../../utils/ApiResponse.ts";
 
 export class PumpLaunchController {
-  static async createLaunch(req: Request, res: Response): Promise<void> {
-    const payload = req.body;
-    const launch = await PumpLaunchService.createLaunch(payload);
+  static async launch(req: Request, res: Response): Promise<void> {
+    const {
+      creatorPublicKey,
+      userPublicKey,
+      name,
+      symbol,
+      uri,
+      mayhemMode,
+      cashback,
+    } = req.body;
+
+    const result = await PumpLaunchService.launchToken({
+      creatorPublicKey,
+      userPublicKey,
+      name,
+      symbol,
+      uri,
+      mayhemMode,
+      cashback,
+    });
+
+    res.status(201).json(ApiResponse.created("Pump token launched", result));
+  }
+
+  static async launchWithBuy(req: Request, res: Response): Promise<void> {
+    const {
+      creatorPublicKey,
+      userPublicKey,
+      name,
+      symbol,
+      uri,
+      mayhemMode,
+      cashback,
+      initialBuySol,
+      slippage,
+    } = req.body;
+
+    const result = await PumpLaunchService.launchToken({
+      creatorPublicKey,
+      userPublicKey,
+      name,
+      symbol,
+      uri,
+      mayhemMode,
+      cashback,
+      initialBuySol,
+      slippage,
+    });
 
     res
       .status(201)
-      .json(ApiResponse.created("Pump launch created successfully", launch));
+      .json(
+        ApiResponse.created("Pump token launched with initial buy", result),
+      );
   }
 
-  static async executeLaunch(req: Request, res: Response): Promise<void> {
-    const { mintAddress } = req.params as { mintAddress: string };
+  static async buy(req: Request, res: Response): Promise<void> {
+    const {
+      mintAddress,
+      userPublicKey,
+      buySolAmount,
+      buyTokenAmountRaw,
+      slippage,
+    } = req.body;
 
-    const launch = await PumpLaunchService.executeLaunch(mintAddress);
+    const result = await PumpLaunchService.buyFromBondingCurve({
+      mintAddress,
+      userPublicKey,
+      buySolAmount,
+      buyTokenAmountRaw,
+      slippage,
+    });
+
+    res.status(200).json(ApiResponse.ok("Bought from bonding curve", result));
+  }
+
+  static async migrate(req: Request, res: Response): Promise<void> {
+    const { mintAddress, userPublicKey } = req.body;
+
+    const result = await PumpLaunchService.migrateBondingCurve({
+      mintAddress,
+      userPublicKey,
+    });
 
     res
       .status(200)
-      .json(ApiResponse.ok("Pump launch executed on chain", launch));
+      .json(ApiResponse.ok("Bonding curve migration submitted", result));
   }
 
-  static async getLaunch(req: Request, res: Response): Promise<void> {
-    const { mintAddress } = req.params as { mintAddress: string };
-    const launch = await PumpLaunchService.getLaunch(mintAddress);
-
-    res.status(200).json(ApiResponse.ok("Pump launch retrieved", launch));
-  }
-
-  static async listLaunches(req: Request, res: Response): Promise<void> {
-    const query = req.query;
-    const result = await PumpLaunchService.listLaunches({
-      creatorWallet: query.creatorWallet as string | undefined,
-      status: query.status as string | undefined,
-      groupTag: query.groupTag as string | undefined,
-      page: Number(query.page || 1),
-      limit: Number(query.limit || 20),
-    });
-
-    res.status(200).json(
-      ApiResponse.ok("Pump launches listed", result.launches, {
-        total: result.total,
-        page: result.page,
-        limit: result.limit,
-      }),
-    );
-  }
-
-  static async updateLaunch(req: Request, res: Response): Promise<void> {
+  static async getBondingCurve(req: Request, res: Response): Promise<void> {
     const { mintAddress } = req.params as { mintAddress: string };
 
-    const updated = await PumpLaunchService.updateLaunch(mintAddress, req.body);
+    const result = await PumpLaunchService.getBondingCurveInfo(mintAddress);
 
-    res.status(200).json(ApiResponse.ok("Pump launch updated", updated));
+    res
+      .status(200)
+      .json(ApiResponse.ok("Bonding curve state retrieved", result));
   }
 }

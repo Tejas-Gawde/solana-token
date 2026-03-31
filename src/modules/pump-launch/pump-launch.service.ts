@@ -1,452 +1,367 @@
 import {
-  Keypair,
   Connection,
   PublicKey,
-  Transaction,
-  sendAndConfirmTransaction,
-  SystemProgram,
-  SYSVAR_RENT_PUBKEY,
   TransactionInstruction,
+  Keypair,
+  VersionedTransaction,
+  TransactionMessage,
 } from "@solana/web3.js";
+import BN from "bn.js";
 import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  TOKEN_PROGRAM_ID,
-  TOKEN_2022_PROGRAM_ID,
-  getAssociatedTokenAddressSync,
-} from "@solana/spl-token";
-import bs58 from "bs58";
+  PUMP_SDK,
+  OnlinePumpSdk,
+  getBuySolAmountFromTokenAmount,
+  getBuyTokenAmountFromSolAmount,
+} from "@pump-fun/pump-sdk";
+import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
+import { WalletService } from "../wallet/wallet.service.ts";
 import { config } from "../../config/index.ts";
-import { AppError } from "../../middleware/errorHandler.ts";
 import { logger } from "../../utils/logger.ts";
-import { WalletModel } from "../wallet/wallet.model.ts";
-import { PumpLaunchModel } from "./pump-launch.model.ts";
+import { AppError } from "../../middleware/errorHandler.ts";
 import type {
-  PumpLaunchRecord,
-  PumpLaunchPublicInfo,
-  CreatePumpLaunchOptions,
-  PumpLaunchListOptions,
-  UpdatePumpLaunchOptions,
+  LaunchPumpTokenOptions,
+  LaunchPumpTokenResult,
+  BuyFromBondingCurveOptions,
+  BuyFromBondingCurveResult,
+  MigrateBondingCurveOptions,
+  MigrateBondingCurveResult,
+  PumpLaunchBondingCurveInfo,
 } from "./pump-launch.types.ts";
 
-function toPublicInfo(record: PumpLaunchRecord): PumpLaunchPublicInfo {
-  return {
-    id: record.id,
-    mintAddress: record.mint_address,
-    creatorWallet: record.creator_wallet,
-    name: record.name,
-    symbol: record.symbol,
-    description: record.description || undefined,
-    imageUrl: record.image_url || undefined,
-    metadataUri: record.metadata_uri || undefined,
-    twitter: record.twitter || undefined,
-    telegram: record.telegram || undefined,
-    website: record.website || undefined,
-    initialBuySol: record.initial_buy_sol ?? undefined,
-    groupTag: record.group_tag || undefined,
-    createTxSignature: record.create_tx_signature,
-    status: record.status,
-    createdAt: record.created_at,
-  };
-}
+const connection = new Connection(config.solana.rpcUrl, "confirmed");
 
-const PUMP_PROGRAM_ID = new PublicKey(
-  "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
-);
-const TOKEN_METADATA_PROGRAM_ID = new PublicKey(
-  "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
-);
-const PUMP_CREATE_DISCRIMINATOR = Buffer.from([24, 30, 200, 40, 5, 28, 7, 119]);
-const PUMP_CREATE_V2_DISCRIMINATOR = Buffer.from([
-  214, 144, 76, 236, 95, 139, 49, 180,
-]);
-
-function encodeString(value: string): Buffer {
-  const raw = Buffer.from(value, "utf8");
-  const length = Buffer.alloc(4);
-  length.writeUInt32LE(raw.length, 0);
-  return Buffer.concat([length, raw]);
-}
-
-function buildPumpCreateInstruction({
-  mint,
-  creator,
-  name,
-  symbol,
-  uri,
-}: {
-  mint: PublicKey;
-  creator: PublicKey;
-  name: string;
-  symbol: string;
-  uri: string;
-}): TransactionInstruction {
-  const mintAuthority = PublicKey.findProgramAddressSync(
-    [Buffer.from("mint-authority")],
-    PUMP_PROGRAM_ID,
-  )[0];
-  const bondingCurve = PublicKey.findProgramAddressSync(
-    [Buffer.from("bonding-curve"), mint.toBuffer()],
-    PUMP_PROGRAM_ID,
-  )[0];
-  const associatedBondingCurve = getAssociatedTokenAddressSync(
-    mint,
-    bondingCurve,
-    true,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-  );
-  const global = PublicKey.findProgramAddressSync(
-    [Buffer.from("global")],
-    PUMP_PROGRAM_ID,
-  )[0];
-  const metadata = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("metadata"),
-      TOKEN_METADATA_PROGRAM_ID.toBuffer(),
-      mint.toBuffer(),
-    ],
-    TOKEN_METADATA_PROGRAM_ID,
-  )[0];
-  const eventAuthority = PublicKey.findProgramAddressSync(
-    [Buffer.from("__event_authority")],
-    PUMP_PROGRAM_ID,
-  )[0];
-
-  const data = Buffer.concat([
-    PUMP_CREATE_DISCRIMINATOR,
-    encodeString(name),
-    encodeString(symbol),
-    encodeString(uri),
-    creator.toBuffer(),
-  ]);
-
-  const keys = [
-    { pubkey: mint, isWritable: true, isSigner: true },
-    { pubkey: mintAuthority, isWritable: false, isSigner: false },
-    { pubkey: bondingCurve, isWritable: true, isSigner: false },
-    { pubkey: associatedBondingCurve, isWritable: true, isSigner: false },
-    { pubkey: global, isWritable: false, isSigner: false },
-    { pubkey: TOKEN_METADATA_PROGRAM_ID, isWritable: false, isSigner: false },
-    { pubkey: metadata, isWritable: true, isSigner: false },
-    { pubkey: creator, isWritable: true, isSigner: true },
-    { pubkey: SystemProgram.programId, isWritable: false, isSigner: false },
-    { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
-    { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
-    { pubkey: SYSVAR_RENT_PUBKEY, isWritable: false, isSigner: false },
-    { pubkey: eventAuthority, isWritable: false, isSigner: false },
-    { pubkey: PUMP_PROGRAM_ID, isWritable: false, isSigner: false },
-  ];
-
-  return new TransactionInstruction({
-    programId: PUMP_PROGRAM_ID,
-    keys,
-    data,
-  });
-}
-
-function buildPumpCreateV2Instruction({
-  mint,
-  creator,
-  name,
-  symbol,
-  uri,
-  mayhemMode,
-  cashback,
-}: {
-  mint: PublicKey;
-  creator: PublicKey;
-  name: string;
-  symbol: string;
-  uri: string;
-  mayhemMode: boolean;
-  cashback: boolean;
-}): TransactionInstruction {
-  const mintAuthority = PublicKey.findProgramAddressSync(
-    [Buffer.from("mint-authority")],
-    PUMP_PROGRAM_ID,
-  )[0];
-  const bondingCurve = PublicKey.findProgramAddressSync(
-    [Buffer.from("bonding-curve"), mint.toBuffer()],
-    PUMP_PROGRAM_ID,
-  )[0];
-  const associatedBondingCurve = getAssociatedTokenAddressSync(
-    mint,
-    bondingCurve,
-    true,
-    TOKEN_2022_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-  );
-  const global = PublicKey.findProgramAddressSync(
-    [Buffer.from("global")],
-    PUMP_PROGRAM_ID,
-  )[0];
-  const mayhemProgramId = new PublicKey(
-    "MAyhSmzXzV1pTf7LsNkrNwkWKTo4ougAJ1PPg47MD4e",
-  );
-  const globalParams = PublicKey.findProgramAddressSync(
-    [Buffer.from("global-params")],
-    mayhemProgramId,
-  )[0];
-  const solVault = PublicKey.findProgramAddressSync(
-    [Buffer.from("sol-vault")],
-    mayhemProgramId,
-  )[0];
-  const mayhemState = PublicKey.findProgramAddressSync(
-    [Buffer.from("mayhem-state"), mint.toBuffer()],
-    mayhemProgramId,
-  )[0];
-  const mayhemTokenVault = getAssociatedTokenAddressSync(
-    mint,
-    solVault,
-    true,
-    TOKEN_2022_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-  );
-  const eventAuthority = PublicKey.findProgramAddressSync(
-    [Buffer.from("__event_authority")],
-    PUMP_PROGRAM_ID,
-  )[0];
-
-  const data = Buffer.concat([
-    PUMP_CREATE_V2_DISCRIMINATOR,
-    encodeString(name),
-    encodeString(symbol),
-    encodeString(uri),
-    creator.toBuffer(),
-    Buffer.from([mayhemMode ? 1 : 0]),
-    Buffer.from([1, cashback ? 1 : 0]),
-  ]);
-
-  const keys = [
-    { pubkey: mint, isWritable: true, isSigner: true },
-    { pubkey: mintAuthority, isWritable: false, isSigner: false },
-    { pubkey: bondingCurve, isWritable: true, isSigner: false },
-    { pubkey: associatedBondingCurve, isWritable: true, isSigner: false },
-    { pubkey: global, isWritable: false, isSigner: false },
-    { pubkey: creator, isWritable: true, isSigner: true },
-    { pubkey: SystemProgram.programId, isWritable: false, isSigner: false },
-    { pubkey: TOKEN_2022_PROGRAM_ID, isWritable: false, isSigner: false },
-    { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
-    { pubkey: mayhemProgramId, isWritable: true, isSigner: false },
-    { pubkey: globalParams, isWritable: false, isSigner: false },
-    { pubkey: solVault, isWritable: true, isSigner: false },
-    { pubkey: mayhemState, isWritable: true, isSigner: false },
-    { pubkey: mayhemTokenVault, isWritable: true, isSigner: false },
-    { pubkey: eventAuthority, isWritable: false, isSigner: false },
-    { pubkey: PUMP_PROGRAM_ID, isWritable: false, isSigner: false },
-  ];
-
-  return new TransactionInstruction({
-    programId: PUMP_PROGRAM_ID,
-    keys,
-    data,
-  });
-}
-
-async function getCreatorKeypair(creatorWallet: string): Promise<Keypair> {
-  const record = WalletModel.findByPublicKey(creatorWallet);
-  if (!record) {
-    throw new AppError(`Creator wallet not found: ${creatorWallet}`, 404);
+function parsePublicKey(value: string, name: string): PublicKey {
+  try {
+    return new PublicKey(value);
+  } catch {
+    throw new AppError(`Invalid public key: ${name}`, 400);
   }
+}
 
-  const privateKeyBase58 = (
-    await import("../../utils/crypto.ts")
-  ).decryptPrivateKey(record.encrypted_private_key);
-
-  const secretKey = bs58.decode(privateKeyBase58);
-  if (secretKey.length !== 64) {
-    throw new AppError("Creator wallet key is corrupted", 500);
+function solToLamports(sol: number): BN {
+  if (!Number.isFinite(sol) || sol <= 0) {
+    throw new AppError("Invalid SOL amount", 400);
   }
+  const lamports = BigInt(Math.floor(sol * 1_000_000_000));
+  return new BN(lamports.toString());
+}
 
-  return Keypair.fromSecretKey(secretKey);
+function serializeValue(value: unknown): unknown {
+  if (value instanceof BN) return value.toString();
+  if (value instanceof PublicKey) return value.toBase58();
+  if (value instanceof Uint8Array) return Buffer.from(value).toString("base64");
+  if (value instanceof ArrayBuffer)
+    return Buffer.from(new Uint8Array(value)).toString("base64");
+  if (Array.isArray(value)) return value.map(serializeValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [
+        k,
+        serializeValue(v),
+      ]),
+    );
+  }
+  return value;
 }
 
 export class PumpLaunchService {
-  static async createLaunch(
-    options: CreatePumpLaunchOptions,
-  ): Promise<PumpLaunchPublicInfo> {
-    try {
-      const walletRecord = WalletModel.findByPublicKey(options.creatorWallet);
-      if (!walletRecord) {
-        throw new AppError(
-          `Creator wallet not found in database: ${options.creatorWallet}`,
-          404,
-        );
-      }
+  static async launchToken(
+    options: LaunchPumpTokenOptions,
+  ): Promise<LaunchPumpTokenResult> {
+    const {
+      creatorPublicKey,
+      userPublicKey,
+      name,
+      symbol,
+      uri,
+      mayhemMode = false,
+      cashback = false,
+      initialBuySol,
+      slippage = 1,
+    } = options;
 
-      const creatorKeypair = await getCreatorKeypair(options.creatorWallet);
-      const mintKeypair = Keypair.generate();
-      const creator = new PublicKey(options.creatorWallet);
-      const connection = new Connection(config.solana.rpcUrl, "confirmed");
+    const creator = parsePublicKey(creatorPublicKey, "creatorPublicKey");
+    const user = parsePublicKey(userPublicKey, "userPublicKey");
 
-      const instruction = buildPumpCreateV2Instruction({
-        mint: mintKeypair.publicKey,
-        name: options.name,
-        symbol: options.symbol,
-        uri: options.metadataUri || "",
-        creator,
-        mayhemMode: options.mayhemMode || false,
-        cashback: options.cashback || false,
+    const userKeypair = await WalletService.getKeypairForWallet(userPublicKey);
+    const mintKeypair = Keypair.generate();
+
+    const instructions: TransactionInstruction[] = [];
+    let result: LaunchPumpTokenResult = {
+      action: "created",
+      mintAddress: mintKeypair.publicKey.toBase58(),
+      txSignature: "",
+    };
+
+    if (typeof initialBuySol === "number" && initialBuySol > 0) {
+      const onlinePumpSdk = new OnlinePumpSdk(connection);
+      const global = await onlinePumpSdk.fetchGlobal();
+      const feeConfig = await onlinePumpSdk.fetchFeeConfig();
+      const initialBuyLamports = solToLamports(initialBuySol);
+
+      const amount = getBuyTokenAmountFromSolAmount({
+        global,
+        feeConfig,
+        mintSupply: null,
+        bondingCurve: null,
+        amount: initialBuyLamports,
       });
 
-      const latestBlockhash = await connection.getLatestBlockhash("confirmed");
-      const tx = new Transaction({
-        feePayer: creatorKeypair.publicKey,
-        recentBlockhash: latestBlockhash.blockhash,
-      }).add(instruction);
-
-      tx.sign(creatorKeypair, mintKeypair);
-
-      const signature = await sendAndConfirmTransaction(
-        connection,
-        tx,
-        [creatorKeypair, mintKeypair],
-        {
-          commitment: "confirmed",
-        },
+      instructions.push(
+        ...(await PUMP_SDK.createV2AndBuyInstructions({
+          global,
+          mint: mintKeypair.publicKey,
+          name,
+          symbol,
+          uri,
+          creator,
+          user,
+          amount,
+          solAmount: initialBuyLamports,
+          mayhemMode,
+          cashback,
+        })),
       );
 
-      const record = PumpLaunchModel.create({
+      const txSignature = await this.sendTransaction(
+        instructions,
+        [userKeypair, mintKeypair],
+        user,
+      );
+
+      return {
+        action: "created_with_buy",
         mintAddress: mintKeypair.publicKey.toBase58(),
-        creatorWallet: options.creatorWallet,
-        name: options.name,
-        symbol: options.symbol,
-        description: options.description,
-        imageUrl: options.imageUrl,
-        metadataUri: options.metadataUri,
-        twitter: options.twitter,
-        telegram: options.telegram,
-        website: options.website,
-        initialBuySol: options.initialBuySol,
-        groupTag: options.groupTag,
-        createTxSignature: signature,
-        status: "created",
+        txSignature,
+        purchasedTokenAmountRaw: amount.toString(),
+        spentSolLamports: initialBuyLamports.toString(),
+      };
+    }
+
+    instructions.push(
+      await PUMP_SDK.createV2Instruction({
+        mint: mintKeypair.publicKey,
+        name,
+        symbol,
+        uri,
+        creator,
+        user,
+        mayhemMode,
+        cashback,
+      }),
+    );
+
+    const txSignature = await this.sendTransaction(
+      instructions,
+      [userKeypair, mintKeypair],
+      user,
+    );
+
+    result.txSignature = txSignature;
+    return result;
+  }
+
+  static async buyFromBondingCurve(
+    options: BuyFromBondingCurveOptions,
+  ): Promise<BuyFromBondingCurveResult> {
+    const {
+      mintAddress,
+      userPublicKey,
+      buySolAmount,
+      buyTokenAmountRaw,
+      slippage = 1,
+    } = options;
+
+    const user = parsePublicKey(userPublicKey, "userPublicKey");
+    const mint = parsePublicKey(mintAddress, "mintAddress");
+
+    const tokenProgram = await this.detectTokenProgram(mint);
+    const userKeypair = await WalletService.getKeypairForWallet(userPublicKey);
+
+    const onlinePumpSdk = new OnlinePumpSdk(connection);
+    const global = await onlinePumpSdk.fetchGlobal();
+    const feeConfig = await onlinePumpSdk.fetchFeeConfig();
+    const { bondingCurveAccountInfo, bondingCurve, associatedUserAccountInfo } =
+      await onlinePumpSdk.fetchBuyState(mint, user, tokenProgram);
+
+    const mintSupply = await this.getMintSupply(mint);
+
+    let amount: BN;
+    let solAmount: BN;
+
+    if (typeof buySolAmount === "number") {
+      solAmount = solToLamports(buySolAmount);
+      amount = getBuyTokenAmountFromSolAmount({
+        global,
+        feeConfig,
+        mintSupply,
+        bondingCurve,
+        amount: solAmount,
       });
-
-      logger.info(
-        `Pump launch created on-chain: ${record.mint_address}, tx: ${signature}`,
-      );
-
-      return toPublicInfo(record);
-    } catch (error: any) {
-      if (error instanceof AppError) throw error;
-      logger.error(`Failed to prepare pump launch: ${error.message}`);
+    } else if (buyTokenAmountRaw) {
+      amount = new BN(buyTokenAmountRaw);
+      solAmount = getBuySolAmountFromTokenAmount({
+        global,
+        feeConfig,
+        mintSupply,
+        bondingCurve,
+        amount,
+      });
+    } else {
       throw new AppError(
-        `Failed to prepare pump launch: ${error.message}`,
-        500,
+        "Either buySolAmount or buyTokenAmountRaw must be provided",
+        400,
       );
     }
-  }
 
-  static async executeLaunch(
-    mintAddress: string,
-  ): Promise<PumpLaunchPublicInfo> {
-    const record = PumpLaunchModel.findByMintAddress(mintAddress);
-    if (!record) {
-      throw new AppError(`Pump launch not found: ${mintAddress}`, 404);
-    }
+    const instructions = await PUMP_SDK.buyInstructions({
+      global,
+      bondingCurveAccountInfo,
+      associatedUserAccountInfo,
+      bondingCurve,
+      mint,
+      user,
+      amount,
+      solAmount,
+      slippage,
+      tokenProgram,
+    });
 
-    if (record.status === "created") {
-      throw new AppError(`Pump launch already executed: ${mintAddress}`, 409);
-    }
+    const txSignature = await this.sendTransaction(
+      instructions,
+      [userKeypair],
+      user,
+    );
 
-    const creatorKeypair = await getCreatorKeypair(record.creator_wallet);
-    const connection = new Connection(config.solana.rpcUrl, "confirmed");
-
-    try {
-      const instruction = buildPumpCreateV2Instruction({
-        mint: new PublicKey(record.mint_address),
-        creator: new PublicKey(record.creator_wallet),
-        name: record.name,
-        symbol: record.symbol,
-        uri: record.metadata_uri || "",
-        mayhemMode: false,
-        cashback: false,
-      });
-
-      const latestBlockhash = await connection.getLatestBlockhash("confirmed");
-      const tx = new Transaction({
-        feePayer: creatorKeypair.publicKey,
-        recentBlockhash: latestBlockhash.blockhash,
-      }).add(instruction);
-
-      tx.sign(creatorKeypair);
-
-      const signature = await sendAndConfirmTransaction(
-        connection,
-        tx,
-        [creatorKeypair],
-        {
-          commitment: "confirmed",
-        },
-      );
-
-      PumpLaunchModel.update(mintAddress, {
-        create_tx_signature: signature,
-        status: "created",
-      });
-
-      logger.info(`Pump launch executed: ${mintAddress}, tx: ${signature}`);
-
-      return toPublicInfo(PumpLaunchModel.findByMintAddress(mintAddress)!);
-    } catch (error: any) {
-      logger.error(
-        `Failed to execute pump launch ${mintAddress}: ${error.message}`,
-      );
-      PumpLaunchModel.update(mintAddress, {
-        status: "failed",
-        create_tx_signature: error.message,
-      });
-      throw new AppError(
-        `Failed to execute pump launch: ${error.message}`,
-        500,
-      );
-    }
-  }
-
-  static async getLaunch(mintAddress: string): Promise<PumpLaunchPublicInfo> {
-    const record = PumpLaunchModel.findByMintAddress(mintAddress);
-    if (!record) {
-      throw new AppError(`Pump launch not found: ${mintAddress}`, 404);
-    }
-    return toPublicInfo(record);
-  }
-
-  static async listLaunches(options: PumpLaunchListOptions): Promise<{
-    launches: PumpLaunchPublicInfo[];
-    total: number;
-    page: number;
-    limit: number;
-  }> {
-    const { launches, total } = PumpLaunchModel.list(options);
     return {
-      launches: launches.map(toPublicInfo),
-      total,
-      page: options.page,
-      limit: options.limit,
+      mintAddress,
+      txSignature,
+      purchasedTokenAmountRaw: amount.toString(),
+      spentSolLamports: solAmount.toString(),
+      slippageBps: slippage,
     };
   }
 
-  static async updateLaunch(
-    mintAddress: string,
-    data: UpdatePumpLaunchOptions,
-  ): Promise<PumpLaunchPublicInfo> {
-    const updated = PumpLaunchModel.update(mintAddress, {
-      status: data.status,
-      description: data.description,
-      image_url: data.imageUrl,
-      metadata_uri: data.metadataUri,
-      twitter: data.twitter,
-      telegram: data.telegram,
-      website: data.website,
-      initial_buy_sol: data.initialBuySol,
-      group_tag: data.groupTag,
-    });
+  static async migrateBondingCurve(
+    options: MigrateBondingCurveOptions,
+  ): Promise<MigrateBondingCurveResult> {
+    const { mintAddress, userPublicKey } = options;
+    const user = parsePublicKey(userPublicKey, "userPublicKey");
+    const mint = parsePublicKey(mintAddress, "mintAddress");
 
-    if (!updated) {
-      throw new AppError(`Pump launch not found: ${mintAddress}`, 404);
+    const tokenProgram = await this.detectTokenProgram(mint);
+    const userKeypair = await WalletService.getKeypairForWallet(userPublicKey);
+
+    const onlinePumpSdk = new OnlinePumpSdk(connection);
+    const global = await onlinePumpSdk.fetchGlobal();
+
+    if (!global.enableMigrate) {
+      throw new AppError("Pump migrations are disabled for this network", 400);
     }
 
-    return toPublicInfo(updated);
+    const instructions = [
+      await PUMP_SDK.migrateInstruction({
+        withdrawAuthority: global.withdrawAuthority,
+        mint,
+        user,
+        tokenProgram,
+      }),
+    ];
+
+    const txSignature = await this.sendTransaction(
+      instructions,
+      [userKeypair],
+      user,
+    );
+
+    return { mintAddress, txSignature };
+  }
+
+  static async getBondingCurveInfo(
+    mintAddress: string,
+  ): Promise<PumpLaunchBondingCurveInfo> {
+    const mint = parsePublicKey(mintAddress, "mintAddress");
+    const tokenProgram = await this.detectTokenProgram(mint);
+    const onlinePumpSdk = new OnlinePumpSdk(connection);
+    const global = await onlinePumpSdk.fetchGlobal();
+    const feeConfig = await onlinePumpSdk.fetchFeeConfig();
+    const bondingCurve = await onlinePumpSdk.fetchBondingCurve(mint);
+    const mintSupply = await this.getMintSupply(mint);
+
+    return {
+      mintAddress,
+      tokenProgram: tokenProgram.toBase58(),
+      mintSupply: mintSupply.toString(),
+      global: serializeValue(global) as Record<string, unknown>,
+      feeConfig: serializeValue(feeConfig) as Record<string, unknown>,
+      bondingCurve: serializeValue(bondingCurve) as Record<string, unknown>,
+    };
+  }
+
+  private static async detectTokenProgram(mint: PublicKey): Promise<PublicKey> {
+    const accountInfo = await connection.getAccountInfo(mint, "finalized");
+    if (!accountInfo) {
+      throw new AppError(`Mint account not found: ${mint.toBase58()}`, 404);
+    }
+    if (accountInfo.owner.equals(TOKEN_2022_PROGRAM_ID))
+      return TOKEN_2022_PROGRAM_ID;
+    if (accountInfo.owner.equals(TOKEN_PROGRAM_ID)) return TOKEN_PROGRAM_ID;
+    throw new AppError(
+      `Unsupported token program for mint ${mint.toBase58()}`,
+      400,
+    );
+  }
+
+  private static async getMintSupply(mint: PublicKey): Promise<BN> {
+    const supply = await connection.getTokenSupply(mint);
+    return new BN(supply.value.amount);
+  }
+
+  private static async sendTransaction(
+    instructions: TransactionInstruction[],
+    signers: Keypair[],
+    feePayer: PublicKey,
+  ): Promise<string> {
+    if (instructions.length === 0) {
+      throw new AppError("No instructions to send", 400);
+    }
+
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash("confirmed");
+
+    const messageV0 = new TransactionMessage({
+      payerKey: feePayer,
+      recentBlockhash: blockhash,
+      instructions,
+    }).compileToV0Message();
+
+    const versionedTx = new VersionedTransaction(messageV0);
+    versionedTx.sign(signers);
+
+    const txSignature = await connection.sendTransaction(versionedTx, {
+      skipPreflight: false,
+      maxRetries: 3,
+    });
+
+    await this.awaitConfirmation(txSignature, blockhash, lastValidBlockHeight);
+    return txSignature;
+  }
+
+  private static async awaitConfirmation(
+    signature: string,
+    blockhash: string,
+    lastValidBlockHeight: number,
+  ): Promise<void> {
+    const result = await connection.confirmTransaction(
+      { signature, blockhash, lastValidBlockHeight },
+      "confirmed",
+    );
+
+    if (result.value.err) {
+      throw new AppError(
+        `Transaction failed on-chain: ${JSON.stringify(result.value.err)}`,
+        500,
+      );
+    }
   }
 }
