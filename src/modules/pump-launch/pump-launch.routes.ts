@@ -5,6 +5,7 @@ import {
   validate,
   launchPumpSchema,
   launchPumpWithBuySchema,
+  launchPumpWithMintPrivateKeySchema,
   buyPumpSchema,
   migratePumpSchema,
   getBondingCurveSchema,
@@ -30,6 +31,16 @@ router.post(
   "/launch-with-buy",
   validate(launchPumpWithBuySchema),
   asyncHandler(PumpLaunchController.launchWithBuy),
+);
+
+/**
+ * POST /api/pump-launch/launch-with-mint-private-key
+ * Launch a new pump using a caller-provided mint private key.
+ */
+router.post(
+  "/launch-with-mint-private-key",
+  validate(launchPumpWithMintPrivateKeySchema),
+  asyncHandler(PumpLaunchController.launchWithMintPrivateKey),
 );
 
 /**

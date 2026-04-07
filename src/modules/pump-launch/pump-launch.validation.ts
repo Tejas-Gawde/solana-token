@@ -8,6 +8,16 @@ const publicKeySchema = z
   .max(44, "Invalid public key")
   .regex(base58Regex, "Public key must be valid base58");
 
+const mintPrivateKeySchema = z
+  .array(
+    z
+      .number("Each private key value must be a number")
+      .int("Each private key value must be an integer")
+      .min(0, "Each private key value must be >= 0")
+      .max(255, "Each private key value must be <= 255"),
+  )
+  .length(64, "mintPrivateKey must contain exactly 64 bytes");
+
 export const launchPumpSchema = z.object({
   body: z.object({
     creatorPublicKey: publicKeySchema,
@@ -32,6 +42,29 @@ export const launchPumpWithBuySchema = z.object({
     initialBuySol: z
       .number("initialBuySol must be a number")
       .positive("initialBuySol must be greater than 0"),
+    slippage: z
+      .number()
+      .min(0, "Slippage must be 0 or greater")
+      .max(10, "Slippage cannot exceed 10")
+      .optional()
+      .default(1),
+  }),
+});
+
+export const launchPumpWithMintPrivateKeySchema = z.object({
+  body: z.object({
+    creatorPublicKey: publicKeySchema,
+    userPublicKey: publicKeySchema,
+    name: z.string().min(3, "Name must be at least 3 characters").max(32),
+    symbol: z.string().min(2, "Symbol must be at least 2 characters").max(10),
+    uri: z.string().min(1, "URI is required").max(512),
+    mintPrivateKey: mintPrivateKeySchema,
+    mayhemMode: z.boolean().optional().default(false),
+    cashback: z.boolean().optional().default(false),
+    initialBuySol: z
+      .number("initialBuySol must be a number")
+      .positive("initialBuySol must be greater than 0")
+      .optional(),
     slippage: z
       .number()
       .min(0, "Slippage must be 0 or greater")

@@ -4,6 +4,7 @@ export interface LaunchPumpTokenOptions {
   name: string;
   symbol: string;
   uri: string;
+  mintPrivateKey?: number[];
   mayhemMode?: boolean;
   cashback?: boolean;
   initialBuySol?: number;

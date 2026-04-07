@@ -59,6 +59,46 @@ export class PumpLaunchController {
       );
   }
 
+  static async launchWithMintPrivateKey(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const {
+      creatorPublicKey,
+      userPublicKey,
+      name,
+      symbol,
+      uri,
+      mintPrivateKey,
+      mayhemMode,
+      cashback,
+      initialBuySol,
+      slippage,
+    } = req.body;
+
+    const result = await PumpLaunchService.launchToken({
+      creatorPublicKey,
+      userPublicKey,
+      name,
+      symbol,
+      uri,
+      mintPrivateKey,
+      mayhemMode,
+      cashback,
+      initialBuySol,
+      slippage,
+    });
+
+    res
+      .status(201)
+      .json(
+        ApiResponse.created(
+          "Pump token launched using provided mint private key",
+          result,
+        ),
+      );
+  }
+
   static async buy(req: Request, res: Response): Promise<void> {
     const {
       mintAddress,

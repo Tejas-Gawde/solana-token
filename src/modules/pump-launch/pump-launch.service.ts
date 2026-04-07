@@ -46,6 +46,18 @@ function solToLamports(sol: number): BN {
   return new BN(lamports.toString());
 }
 
+function parseMintKeypairFromPrivateKey(privateKey: number[]): Keypair {
+  if (!Array.isArray(privateKey) || privateKey.length !== 64) {
+    throw new AppError("mintPrivateKey must contain exactly 64 bytes", 400);
+  }
+
+  try {
+    return Keypair.fromSecretKey(Uint8Array.from(privateKey));
+  } catch {
+    throw new AppError("Invalid mintPrivateKey", 400);
+  }
+}
+
 function serializeValue(value: unknown): unknown {
   if (value instanceof BN) return value.toString();
   if (value instanceof PublicKey) return value.toBase58();
@@ -74,6 +86,7 @@ export class PumpLaunchService {
       name,
       symbol,
       uri,
+      mintPrivateKey,
       mayhemMode = false,
       cashback = false,
       initialBuySol,
@@ -84,7 +97,9 @@ export class PumpLaunchService {
     const user = parsePublicKey(userPublicKey, "userPublicKey");
 
     const userKeypair = await WalletService.getKeypairForWallet(userPublicKey);
-    const mintKeypair = Keypair.generate();
+    const mintKeypair = mintPrivateKey
+      ? parseMintKeypairFromPrivateKey(mintPrivateKey)
+      : Keypair.generate();
 
     const instructions: TransactionInstruction[] = [];
     let result: LaunchPumpTokenResult = {
