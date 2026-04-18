@@ -146,6 +146,38 @@ function initializeTables(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_token_metadata_id ON token_metadata(metadata_id);
     CREATE INDEX IF NOT EXISTS idx_token_metadata_group ON token_metadata(group_tag);
+
+    CREATE TABLE IF NOT EXISTS distributions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      distribution_id TEXT NOT NULL UNIQUE,
+      main_wallet TEXT NOT NULL,
+      num_wallets INTEGER NOT NULL,
+      sol_per_wallet REAL NOT NULL,
+      total_sol REAL NOT NULL,
+      step1_tx_signature TEXT,
+      step2_tx_signatures TEXT,
+      b_wallets_group_tag TEXT NOT NULL,
+      c_wallets_group_tag TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      group_tag TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+        CREATE TABLE IF NOT EXISTS wallets_temp_distribute (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      public_key TEXT NOT NULL UNIQUE,
+      encrypted_private_key TEXT NOT NULL,
+      distribution_id TEXT NOT NULL,
+      wallet_index INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_temp_wallets_pk ON wallets_temp_distribute(public_key);
+    CREATE INDEX IF NOT EXISTS idx_temp_wallets_dist ON wallets_temp_distribute(distribution_id);
+    CREATE INDEX IF NOT EXISTS idx_distributions_id ON distributions(distribution_id);
+    CREATE INDEX IF NOT EXISTS idx_distributions_main ON distributions(main_wallet);
+    CREATE INDEX IF NOT EXISTS idx_distributions_group ON distributions(group_tag);
+    CREATE INDEX IF NOT EXISTS idx_distributions_status ON distributions(status);
   `);
 
   logger.info("Database tables initialized");

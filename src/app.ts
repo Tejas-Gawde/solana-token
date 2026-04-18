@@ -5,11 +5,11 @@ import walletRoutes from "./modules/wallet/wallet.routes.ts";
 import tokenRoutes from "./modules/token/token.routes.ts";
 import pumpLaunchRoutes from "./modules/pump-launch/pump-launch.routes.ts";
 import metadataRoutes from "./modules/metadata/metadata.routes.ts";
+import distributeRoutes from "./modules/distribute/distribute.routes.ts";
 import { errorHandler } from "./middleware/errorHandler.ts";
 import { ApiResponse } from "./utils/ApiResponse.ts";
 import { logger } from "./utils/logger.ts";
 import { config } from "./config/index.ts";
-
 const app = express();
 
 // ==================== GLOBAL MIDDLEWARE ====================
@@ -77,6 +77,7 @@ app.use("/api/wallets", walletRoutes);
 app.use("/api/tokens", tokenRoutes);
 app.use("/api/pump", pumpLaunchRoutes);
 app.use("/api/metadata", metadataRoutes);
+app.use("/api/distribute", distributeRoutes);
 
 // 404 handler
 app.use((_req, res) => {
