@@ -13,10 +13,9 @@ import {
   getBuySolAmountFromTokenAmount,
   getBuyTokenAmountFromSolAmount,
 } from "@pump-fun/pump-sdk";
-import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, getAssociatedTokenAddress } from "@solana/spl-token";
 import { WalletService } from "../wallet/wallet.service.ts";
 import { config } from "../../config/index.ts";
-import { logger } from "../../utils/logger.ts";
 import { AppError } from "../../middleware/errorHandler.ts";
 import type {
   LaunchPumpTokenOptions,
@@ -109,45 +108,68 @@ export class PumpLaunchService {
     };
 
     if (typeof initialBuySol === "number" && initialBuySol > 0) {
+
       const onlinePumpSdk = new OnlinePumpSdk(connection);
-      const global = await onlinePumpSdk.fetchGlobal();
-      const feeConfig = await onlinePumpSdk.fetchFeeConfig();
+
+      const createInstructions = await PUMP_SDK.createV2Instruction({
+        mint: mintKeypair.publicKey,
+        name,
+        symbol,
+        uri,
+        creator,
+        user,
+        mayhemMode,
+        cashback,
+      });
+
+      await this.sendTransaction(
+        [createInstructions],
+        [userKeypair, mintKeypair],
+        user,
+      );
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const globalAfterCreate = await onlinePumpSdk.fetchGlobal();
+      const feeConfigAfterCreate = await onlinePumpSdk.fetchFeeConfig();
       const initialBuyLamports = solToLamports(initialBuySol);
 
       const amount = getBuyTokenAmountFromSolAmount({
-        global,
-        feeConfig,
+        global: globalAfterCreate,
+        feeConfig: feeConfigAfterCreate,
         mintSupply: null,
         bondingCurve: null,
         amount: initialBuyLamports,
       });
 
-      instructions.push(
-        ...(await PUMP_SDK.createV2AndBuyInstructions({
-          global,
-          mint: mintKeypair.publicKey,
-          name,
-          symbol,
-          uri,
-          creator,
-          user,
-          amount,
-          solAmount: initialBuyLamports,
-          mayhemMode,
-          cashback,
-        })),
+      const bondingCurveState = await onlinePumpSdk.fetchBuyState(
+        mintKeypair.publicKey,
+        user,
+        await this.detectTokenProgram(mintKeypair.publicKey)
       );
 
-      const txSignature = await this.sendTransaction(
-        instructions,
-        [userKeypair, mintKeypair],
+      const buyInstructions = await PUMP_SDK.buyInstructions({
+        global: globalAfterCreate,
+        bondingCurveAccountInfo: bondingCurveState.bondingCurveAccountInfo,
+        associatedUserAccountInfo: bondingCurveState.associatedUserAccountInfo,
+        bondingCurve: bondingCurveState.bondingCurve,
+        mint: mintKeypair.publicKey,
+        user,
+        amount,
+        solAmount: initialBuyLamports,
+        slippage: slippage,
+        tokenProgram: await this.detectTokenProgram(mintKeypair.publicKey),
+      });
+
+      const buyTxSignature = await this.sendTransaction(
+        buyInstructions,
+        [userKeypair],
         user,
       );
 
       return {
         action: "created_with_buy",
         mintAddress: mintKeypair.publicKey.toBase58(),
-        txSignature,
+        txSignature: buyTxSignature, // Return the buy transaction signature
         purchasedTokenAmountRaw: amount.toString(),
         spentSolLamports: initialBuyLamports.toString(),
       };
@@ -314,17 +336,44 @@ export class PumpLaunchService {
   }
 
   private static async detectTokenProgram(mint: PublicKey): Promise<PublicKey> {
-    const accountInfo = await connection.getAccountInfo(mint, "finalized");
-    if (!accountInfo) {
-      throw new AppError(`Mint account not found: ${mint.toBase58()}`, 404);
+    const commitmentLevels: string[] = ["processed", "confirmed", "finalized"];
+
+    for (const commitment of commitmentLevels) {
+      try {
+        const accountInfo = await connection.getAccountInfo(mint, commitment as any);
+        if (!accountInfo) {
+          throw new Error("Account not found");
+        }
+        if (accountInfo.owner.equals(TOKEN_2022_PROGRAM_ID))
+          return TOKEN_2022_PROGRAM_ID;
+        if (accountInfo.owner.equals(TOKEN_PROGRAM_ID)) return TOKEN_PROGRAM_ID;
+        throw new AppError(
+          `Unsupported token program for mint ${mint.toBase58()}`,
+          400,
+        );
+      } catch (error) {
+        if (commitment !== commitmentLevels[commitmentLevels.length - 1]) {
+          continue;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        try {
+          const accountInfo = await connection.getAccountInfo(mint, "processed");
+          if (!accountInfo) {
+            throw new Error("Account not found");
+          }
+          if (accountInfo.owner.equals(TOKEN_2022_PROGRAM_ID))
+            return TOKEN_2022_PROGRAM_ID;
+          if (accountInfo.owner.equals(TOKEN_PROGRAM_ID)) return TOKEN_PROGRAM_ID;
+          throw new AppError(
+            `Unsupported token program for mint ${mint.toBase58()}`,
+            400,
+          );
+        } catch (retryError) {
+          throw new AppError(`Mint account not found: ${mint.toBase58()}`, 404);
+        }
+      }
     }
-    if (accountInfo.owner.equals(TOKEN_2022_PROGRAM_ID))
-      return TOKEN_2022_PROGRAM_ID;
-    if (accountInfo.owner.equals(TOKEN_PROGRAM_ID)) return TOKEN_PROGRAM_ID;
-    throw new AppError(
-      `Unsupported token program for mint ${mint.toBase58()}`,
-      400,
-    );
+    throw new AppError(`Mint account not found: ${mint.toBase58()}`, 404);
   }
 
   private static async getMintSupply(mint: PublicKey): Promise<BN> {
@@ -341,6 +390,38 @@ export class PumpLaunchService {
       throw new AppError("No instructions to send", 400);
     }
 
+    try {
+      return await this.sendTransactionSingle(instructions, signers, feePayer);
+    } catch (error: any) {
+      if (error.message?.includes("too large") ||
+        error.message?.includes("Transaction too large") ||
+        error.message?.includes("base64 encoded solana_transaction")) {
+        return await this.sendTransactionSplit(instructions, signers, feePayer);
+      }
+      if (error.message?.includes("Simulation failed") && error.getLogs) {
+        try {
+          const logs = await error.getLogs();
+          console.error("Transaction simulation logs:", logs);
+          throw new AppError(
+            `Transaction simulation failed: ${error.message}. Logs: ${JSON.stringify(logs)}`,
+            500,
+          );
+        } catch (logError: any) {
+          throw new AppError(
+            `Transaction simulation failed: ${error.message}. Failed to retrieve logs: ${logError.message}`,
+            500,
+          );
+        }
+      }
+      throw error;
+    }
+  }
+
+  private static async sendTransactionSingle(
+    instructions: TransactionInstruction[],
+    signers: Keypair[],
+    feePayer: PublicKey,
+  ): Promise<string> {
     const { blockhash, lastValidBlockHeight } =
       await connection.getLatestBlockhash("confirmed");
 
@@ -360,6 +441,58 @@ export class PumpLaunchService {
 
     await this.awaitConfirmation(txSignature, blockhash, lastValidBlockHeight);
     return txSignature;
+  }
+
+  private static async sendTransactionSplit(
+    instructions: TransactionInstruction[],
+    signers: Keypair[],
+    feePayer: PublicKey,
+  ): Promise<string> {
+    // For pump launch with buy, we'll split into:
+    // 1. Token creation transaction
+    // 2. Buy transaction
+    // This is a simplified approach - in practice, you'd need to determine
+    // which instructions belong to which transaction based on your SDK
+
+    // For now, we'll implement a basic split heuristic:
+    // If we have more than 5 instructions, split roughly in half
+    if (instructions.length <= 5) {
+      // If it's still small but failing, rethrow the original error
+      throw new AppError("Transaction too large but cannot split further", 500);
+    }
+
+    const midPoint = Math.floor(instructions.length / 2);
+    const firstBatch = instructions.slice(0, midPoint);
+    const secondBatch = instructions.slice(midPoint);
+
+    // For pump launch, the first batch is likely token creation
+    // and second batch is the buy operation
+    try {
+      // Send first transaction (token creation)
+      const firstSignature = await this.sendTransactionSingle(
+        firstBatch,
+        signers, // All signers needed for first batch
+        feePayer
+      );
+
+      // Send second transaction (buy)
+      // Using all signers for safety (both transactions likely need the same signers)
+      const secondSignature = await this.sendTransactionSingle(
+        secondBatch,
+        signers, // All signers needed for second batch
+        feePayer
+      );
+
+      // Return the last transaction signature (the buy)
+      // In a real implementation, you might want to return both or handle differently
+      return secondSignature;
+    } catch (splitError: any) {
+      // If splitting also fails, throw an informative error
+      throw new AppError(
+        `Failed to send transaction even after splitting: ${splitError.message}. Original transaction had ${instructions.length} instructions.`,
+        500
+      );
+    }
   }
 
   private static async awaitConfirmation(

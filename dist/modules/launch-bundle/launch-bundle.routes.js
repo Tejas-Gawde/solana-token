@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const asyncHandler_ts_1 = require("../../middleware/asyncHandler.ts");
+const launch_bundle_controller_ts_1 = require("./launch-bundle.controller.ts");
+const launch_bundle_validation_ts_1 = require("./launch-bundle.validation.ts");
+const router = (0, express_1.Router)();
+router.post("/launch", (0, launch_bundle_validation_ts_1.validate)(launch_bundle_validation_ts_1.launchBundleSchema), (0, asyncHandler_ts_1.asyncHandler)(launch_bundle_controller_ts_1.LaunchBundleController.launch));
+router.post("/launch-direct-wallets", (0, launch_bundle_validation_ts_1.validate)(launch_bundle_validation_ts_1.launchBundleDirectWalletsSchema), (0, asyncHandler_ts_1.asyncHandler)(launch_bundle_controller_ts_1.LaunchBundleController.launchWithWallets));
+router.get("/:launchBundleId", (0, launch_bundle_validation_ts_1.validate)(launch_bundle_validation_ts_1.getLaunchBundleSchema), (0, asyncHandler_ts_1.asyncHandler)(launch_bundle_controller_ts_1.LaunchBundleController.getLaunchBundle));
+exports.default = router;

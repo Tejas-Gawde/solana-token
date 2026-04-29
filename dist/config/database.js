@@ -1,36 +1,36 @@
-import Database from "better-sqlite3";
-import path from "path";
-import fs from "fs";
-import { config } from "./index.ts";
-import { logger } from "../utils/logger.ts";
-
-let db: Database.Database;
-
-export function getDatabase(): Database.Database {
-  if (!db) {
-    const dbDir = path.dirname(config.database.path);
-    if (!fs.existsSync(dbDir)) {
-      fs.mkdirSync(dbDir, { recursive: true });
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getDatabase = getDatabase;
+exports.closeDatabase = closeDatabase;
+const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
+const index_ts_1 = require("./index.ts");
+const logger_ts_1 = require("../utils/logger.ts");
+let db;
+function getDatabase() {
+    if (!db) {
+        const dbDir = path_1.default.dirname(index_ts_1.config.database.path);
+        if (!fs_1.default.existsSync(dbDir)) {
+            fs_1.default.mkdirSync(dbDir, { recursive: true });
+        }
+        db = new better_sqlite3_1.default(index_ts_1.config.database.path, {
+            verbose: index_ts_1.config.server.isDev
+                ? (message) => logger_ts_1.logger.debug(`[SQL] ${message}`)
+                : undefined,
+        });
+        db.pragma("journal_mode = WAL");
+        db.pragma("foreign_keys = ON");
+        initializeTables(db);
+        logger_ts_1.logger.info(`Database connected at ${index_ts_1.config.database.path}`);
     }
-
-    db = new Database(config.database.path, {
-      verbose: config.server.isDev
-        ? (message) => logger.debug(`[SQL] ${message}`)
-        : undefined,
-    });
-
-    db.pragma("journal_mode = WAL");
-    db.pragma("foreign_keys = ON");
-
-    initializeTables(db);
-    logger.info(`Database connected at ${config.database.path}`);
-  }
-
-  return db;
+    return db;
 }
-
-function initializeTables(db: Database.Database): void {
-  db.exec(`
+function initializeTables(db) {
+    db.exec(`
     CREATE TABLE IF NOT EXISTS wallets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       public_key TEXT NOT NULL UNIQUE,
@@ -205,22 +205,18 @@ function initializeTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_launch_bundles_distribution ON launch_bundles(distribution_id);
     CREATE INDEX IF NOT EXISTS idx_launch_bundles_status ON launch_bundles(status);
   `);
-
-  logger.info("Database tables initialized");
+    logger_ts_1.logger.info("Database tables initialized");
 }
-
-export function closeDatabase(): void {
-  if (db) {
-    db.close();
-    logger.info("Database connection closed");
-  }
+function closeDatabase() {
+    if (db) {
+        db.close();
+        logger_ts_1.logger.info("Database connection closed");
+    }
 }
-
-const isDirectRun =
-  process.argv[1]?.endsWith("database.ts") ||
-  process.argv[1]?.endsWith("database.ts");
+const isDirectRun = process.argv[1]?.endsWith("database.ts") ||
+    process.argv[1]?.endsWith("database.ts");
 if (isDirectRun) {
-  getDatabase();
-  logger.info("Database initialization complete");
-  closeDatabase();
+    getDatabase();
+    logger_ts_1.logger.info("Database initialization complete");
+    closeDatabase();
 }

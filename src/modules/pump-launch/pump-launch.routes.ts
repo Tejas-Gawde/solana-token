@@ -14,7 +14,7 @@ import {
 const router = Router();
 
 /**
- * POST /api/pump-launch/launch
+ * POST /api/pump/launch
  * Launch a new pump without initial buy.
  */
 router.post(
@@ -24,7 +24,7 @@ router.post(
 );
 
 /**
- * POST /api/pump-launch/launch-with-buy
+ * POST /api/pump/launch-with-buy
  * Launch a new pump and perform an initial buy in the same request.
  */
 router.post(
@@ -34,7 +34,7 @@ router.post(
 );
 
 /**
- * POST /api/pump-launch/launch-with-mint-private-key
+ * POST /api/pump/launch-with-mint-private-key
  * Launch a new pump using a caller-provided mint private key.
  */
 router.post(
@@ -44,7 +44,7 @@ router.post(
 );
 
 /**
- * POST /api/pump-launch/buy
+ * POST /api/pump/buy
  * Execute a buy order against an existing pump.
  */
 router.post(
@@ -54,7 +54,7 @@ router.post(
 );
 
 /**
- * POST /api/pump-launch/migrate
+ * POST /api/pump/migrate
  * Migrate a pump instance to a new configuration or market.
  */
 router.post(
@@ -64,7 +64,7 @@ router.post(
 );
 
 /**
- * GET /api/pump-launch/bonding-curve/:mintAddress
+ * GET /api/pump/bonding-curve/:mintAddress
  * Retrieve bonding curve data for a pump by mint address.
  */
 router.get(
