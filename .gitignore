@@ -1,6 +1,8 @@
 # Node.js
 node_modules
 
+dist/
+
 # dotenv environment variables file
 .env
 .env.local
