@@ -12,14 +12,18 @@ export const config = {
       process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`,
   },
   solana: {
-    rpcUrl: process.env.SOLANA_RPC_URL || "https://api.testnet.solana.com",
+    rpcUrl: process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
     network: process.env.SOLANA_NETWORK || "devnet",
   },
   jito: {
     blockEngineUrl:
-      process.env.JITO_BLOCK_ENGINE_URL || "https://testnet.block-engine.jito.wtf/api/v1/bundles",
+      process.env.JITO_BLOCK_ENGINE_URL ||
+      "https://testnet.block-engine.jito.wtf/api/v1/bundles",
     defaultTipSol: parseFloat(process.env.JITO_DEFAULT_TIP_SOL || "0.001"),
-    statusTimeoutMs: parseInt(process.env.JITO_STATUS_TIMEOUT_MS || "60000", 10),
+    statusTimeoutMs: parseInt(
+      process.env.JITO_STATUS_TIMEOUT_MS || "60000",
+      10,
+    ),
     statusPollIntervalMs: parseInt(
       process.env.JITO_STATUS_POLL_INTERVAL_MS || "3000",
       10,
