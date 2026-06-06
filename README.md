@@ -1,4 +1,4 @@
-# Bundler Backend
+# Solana Token Launch Platform
 
 A backend platform for automating token deployment, wallet management, transaction orchestration, and launch workflows on the Solana blockchain.
 
